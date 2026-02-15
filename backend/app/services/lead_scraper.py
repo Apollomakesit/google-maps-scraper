@@ -10,8 +10,10 @@ import json
 import logging
 import random
 import re
+import hashlib
 import uuid
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
 
 import httpx
@@ -345,12 +347,20 @@ async def _get_demo_data(query: str, location: str) -> list[dict]:
     Load demo data from the existing bucharest-results.json file.
     Used as fallback when the Go binary or API is not available.
     """
-    import os
     results = []
-    demo_file = "/workspace/bucharest-results.json"
 
-    if os.path.exists(demo_file):
-        with open(demo_file, "r", encoding="utf-8") as f:
+    demo_paths = [
+        Path("/workspace/bucharest-results.json"),
+        Path("/app/bucharest-results.json"),
+        Path("/app/data/bucharest-results.json"),
+        Path(__file__).resolve().parent.parent.parent / "bucharest-results.json",
+    ]
+
+    for demo_file in demo_paths:
+        if not demo_file.exists():
+            continue
+
+        with demo_file.open("r", encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
                 if not line:
@@ -361,8 +371,99 @@ async def _get_demo_data(query: str, location: str) -> list[dict]:
                 except json.JSONDecodeError:
                     continue
 
-    logger.info(f"Loaded {len(results)} demo entries for '{query} in {location}'")
-    return results
+        if results:
+            logger.info(f"Loaded {len(results)} demo entries from {demo_file} for '{query} in {location}'")
+            return results
+
+    generated = _generate_fallback_entries(query, location)
+    logger.info(
+        f"No demo file found for '{query} in {location}', generated {len(generated)} fallback entries"
+    )
+    return generated
+
+
+def _generate_fallback_entries(query: str, location: str, size: int = 12) -> list[dict]:
+    """Generate deterministic fallback entries when no scraper/demo data is available."""
+    query_lc = query.lower()
+    base_seed = int(hashlib.sha1(f"{query}|{location}".encode("utf-8")).hexdigest()[:8], 16)
+    rng = random.Random(base_seed)
+
+    if any(k in query_lc for k in ["dent", "stomat", "dentar"]):
+        kind = "dentist"
+        names = [
+            "Smile Studio", "Dental Focus", "Ortho Plus", "Cabinet Dentar Nova",
+            "Dent Expert", "Clinica Dentaris", "Alfa Dental", "Bright Tooth",
+            "Stoma Vision", "Family Dental Care", "Dent Art", "Denta Prime",
+        ]
+        categories = ["dentist", "stomatolog", "clinica dentara"]
+    elif any(k in query_lc for k in ["rest", "bistro", "pizza"]):
+        kind = "restaurants"
+        names = [
+            "Bistro Urban", "La Gust", "Casa Bună", "Pasta Point", "Trattoria Uno",
+            "Hanul Central", "Meniu de Zi", "Grill Republic", "Street Kitchen", "Delish Hub",
+            "Fork & Flame", "Table 21",
+        ]
+        categories = ["restaurant", "bistro"]
+    elif any(k in query_lc for k in ["instal", "plumb"]):
+        kind = "plumbers"
+        names = [
+            "Instal Rapid", "Aqua Service", "Fix Sanitare", "Plumb Pro", "Teava Expert",
+            "Instal Home", "WaterLine", "Sanitar Team", "Urgent Instal", "Pipe Craft",
+            "Eco Instal", "Hydro Help",
+        ]
+        categories = ["instalator", "instalatii sanitare"]
+    else:
+        kind = "other"
+        names = [
+            "Business Hub", "Pro Services", "City Team", "Alpha Group", "Local Expert",
+            "Smart Solutions", "Urban Works", "Prime Point", "Blue Line", "Core Services",
+            "Central Works", "Atlas Team",
+        ]
+        categories = ["servicii locale"]
+
+    entries: list[dict] = []
+    city = location.strip() or "Bucuresti"
+
+    for index in range(min(size, len(names))):
+        name = f"{names[index]} {city}"
+        phone_last = rng.randint(100, 999)
+        rating = round(3.7 + rng.random() * 1.2, 1)
+        reviews = rng.randint(4, 240)
+        lat = round(44.35 + rng.random() * 0.2, 6)
+        lng = round(26.00 + rng.random() * 0.2, 6)
+
+        website_mode = rng.randint(0, 2)
+        if website_mode == 0:
+            website = ""
+        elif website_mode == 1:
+            website = f"https://{name.lower().replace(' ', '-')}.ro"
+        else:
+            website = "https://facebook.com/placeholder-business"
+
+        entry = {
+            "title": name,
+            "place_id": f"fallback-{kind}-{base_seed}-{index}",
+            "link": f"https://maps.google.com/?q={name.replace(' ', '+')}",
+            "address": f"Str. Exemplu {index + 1}, {city}",
+            "complete_address": {
+                "city": city,
+                "borough": "Sector 1" if city.lower().startswith("buc") else "",
+                "postal_code": f"0{rng.randint(1000, 9999)}",
+                "country": "RO",
+            },
+            "latitude": lat,
+            "longtitude": lng,
+            "review_count": reviews,
+            "review_rating": rating,
+            "categories": categories,
+            "web_site": website,
+            "phone": f"+40 7{rng.randint(10, 99)} {rng.randint(100, 999)} {phone_last}",
+            "status": "OPERATIONAL",
+            "emails": [],
+        }
+        entries.append(entry)
+
+    return entries
 
 
 async def process_scrape_job(
