@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     scrape_delay_min: float = 2.0
     scrape_delay_max: float = 5.0
     headless_browser: bool = True
+    enable_demo_fallback: bool = False
 
     # Google Maps
     google_maps_api_key: Optional[str] = None

@@ -10,7 +10,6 @@ import json
 import logging
 import random
 import re
-import hashlib
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -284,8 +283,9 @@ async def _scrape_via_go_binary(
             await proc.communicate()
         except Exception as e:
             logger.warning(f"Could not build Go binary: {e}")
-            # Return empty - we'll use demo data for now
-            return await _get_demo_data(query, location)
+            if settings.enable_demo_fallback:
+                return await _get_demo_data(query, location)
+            return []
 
     # Create temp query file
     with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
@@ -336,7 +336,7 @@ async def _scrape_via_go_binary(
             except OSError:
                 pass
 
-    if not results:
+    if not results and settings.enable_demo_fallback:
         results = await _get_demo_data(query, location)
 
     return results
@@ -375,16 +375,25 @@ async def _get_demo_data(query: str, location: str) -> list[dict]:
             logger.info(f"Loaded {len(results)} demo entries from {demo_file} for '{query} in {location}'")
             return results
 
-    generated = _generate_fallback_entries(query, location)
-    logger.info(
-        f"No demo file found for '{query} in {location}', generated {len(generated)} fallback entries"
+    if settings.enable_demo_fallback:
+        generated = _generate_fallback_entries(query, location)
+        logger.info(
+            f"No demo file found for '{query} in {location}', generated {len(generated)} fallback entries"
+        )
+        return generated
+
+    logger.warning(
+        "No demo file found for '%s in %s' and demo fallback is disabled",
+        query,
+        location,
     )
-    return generated
+    return []
 
 
 def _generate_fallback_entries(query: str, location: str, size: int = 12) -> list[dict]:
     """Generate deterministic fallback entries when no scraper/demo data is available."""
     query_lc = query.lower()
+    import hashlib
     base_seed = int(hashlib.sha1(f"{query}|{location}".encode("utf-8")).hexdigest()[:8], 16)
     rng = random.Random(base_seed)
 
@@ -509,6 +518,12 @@ async def process_scrape_job(
         total_scraped = len(all_entries)
         logger.info(f"Job {job_id}: Scraped {total_scraped} total entries")
 
+        if total_scraped == 0 and not settings.enable_demo_fallback and not settings.google_maps_api_key:
+            raise RuntimeError(
+                "Nu există sursă reală de scraping disponibilă. Configurează GOOGLE_MAPS_API_KEY "
+                "sau activează ENABLE_DEMO_FALLBACK=true."
+            )
+
         # Filter & enrich
         leads_to_insert = []
         seen_dedup: set[str] = set()
@@ -529,11 +544,10 @@ async def process_scrape_job(
                 continue
             seen_dedup.add(dedup_key)
 
-            # Check website status
-            is_dead, website_status = await check_website_status(website)
+            if website:
+                continue
 
-            if not is_dead:
-                continue  # Skip businesses that have working websites
+            website_status = "missing"
 
             # Must have some contact info
             if not phone and not emails:
