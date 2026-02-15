@@ -6,25 +6,59 @@
  * - Uses a server-side runtime env var (BACKEND_URL), not a build-time one
  * - Eliminates CORS issues (browser talks to same origin)
  * - Works on Railway without special Docker build args
- * - Can use Railway internal networking (e.g. http://backend.railway.internal:8000)
+ * - Can use Railway internal networking
+ *
+ * BACKEND_URL examples:
+ *   - "http://google-maps-scraper.railway.internal:8000"
+ *   - "google-maps-scraper.railway.internal"  (auto-adds http:// and :8000)
+ *   - "https://my-backend.up.railway.app"
  */
 
 import { NextRequest, NextResponse } from "next/server";
 
 function getBackendUrl(): string {
-  // BACKEND_URL is a server-side env var (not NEXT_PUBLIC_), read at runtime.
-  // On Railway, set this to the internal URL: http://google-maps-scraper.railway.internal:8000
-  return (
+  let raw =
     process.env.BACKEND_URL ||
     process.env.NEXT_PUBLIC_API_URL ||
-    "http://localhost:8000"
-  );
+    "http://localhost:8000";
+
+  // Trim whitespace
+  raw = raw.trim();
+
+  // Remove trailing slash
+  raw = raw.replace(/\/+$/, "");
+
+  // Add protocol if missing
+  if (!raw.startsWith("http://") && !raw.startsWith("https://")) {
+    raw = `http://${raw}`;
+  }
+
+  // Add default port :8000 if no port is specified and it's an internal/localhost URL
+  try {
+    const parsed = new URL(raw);
+    // If no explicit port and it looks like an internal URL, add :8000
+    if (
+      !parsed.port &&
+      (parsed.hostname.endsWith(".railway.internal") ||
+        parsed.hostname === "localhost" ||
+        parsed.hostname === "127.0.0.1")
+    ) {
+      parsed.port = "8000";
+    }
+    return parsed.origin;
+  } catch {
+    // If URL parsing fails, return as-is with :8000 appended
+    if (!raw.includes(":", raw.indexOf("//") + 2)) {
+      return `${raw}:8000`;
+    }
+    return raw;
+  }
 }
 
 async function proxyRequest(request: NextRequest): Promise<NextResponse> {
   const backendUrl = getBackendUrl();
 
-  // Build the target URL: replace the origin but keep the path and query
+  // Build the target URL: keep the path and query, change the origin
   const url = new URL(request.url);
   const targetUrl = `${backendUrl}${url.pathname}${url.search}`;
 
@@ -80,11 +114,25 @@ async function proxyRequest(request: NextRequest): Promise<NextResponse> {
       headers: responseHeaders,
     });
   } catch (error) {
-    console.error(`[API Proxy] Error forwarding to ${targetUrl}:`, error);
+    const errMsg = error instanceof Error ? error.message : "Unknown error";
+    console.error(
+      `[API Proxy] Failed to reach backend at ${targetUrl}: ${errMsg}`
+    );
+    console.error(
+      `[API Proxy] BACKEND_URL env = "${process.env.BACKEND_URL || "(not set)"}"`
+    );
+    console.error(`[API Proxy] Resolved backend URL = "${backendUrl}"`);
+
     return NextResponse.json(
       {
-        detail: `Nu s-a putut contacta serverul backend. Verificați dacă serviciul backend rulează. (${backendUrl})`,
-        error: error instanceof Error ? error.message : "Unknown error",
+        detail:
+          `Nu s-a putut contacta serverul backend la ${targetUrl}. ` +
+          `Verificați: (1) serviciul backend rulează, ` +
+          `(2) BACKEND_URL="${process.env.BACKEND_URL || "(nesetat)"}" este corect, ` +
+          `(3) portul 8000 este accesibil.`,
+        resolved_url: targetUrl,
+        backend_env: process.env.BACKEND_URL || null,
+        error: errMsg,
       },
       { status: 502 }
     );
