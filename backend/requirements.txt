@@ -1,0 +1,25 @@
+# FastAPI & Server
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+
+# Supabase
+supabase==2.11.0
+
+# HTTP Client
+httpx==0.28.1
+
+# HTML Parsing
+beautifulsoup4==4.12.3
+lxml==5.3.0
+
+# Async support
+anyio==4.8.0
+
+# Anti-bot / Browser automation (optional, for advanced scraping)
+# playwright==1.49.1
+
+# Utilities
+python-dotenv==1.0.1
+python-multipart==0.0.20
