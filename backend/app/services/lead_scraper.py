@@ -300,6 +300,7 @@ async def _scrape_via_go_binary(
             binary_path,
             "-input", query_file,
             "-results", output_file,
+            "-json",
             "-exit-on-inactivity", "30s",
             "-lang", "ro",
             "-depth", "1",
