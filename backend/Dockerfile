@@ -37,12 +37,14 @@ ENV PATH=/root/.local/bin:$PATH
 # Copy application code
 COPY app/ ./app/
 
-# Expose port (Railway uses PORT env var)
+# Fixed port for predictable internal networking on Railway.
+# The frontend proxy connects to this port via Railway private network.
+ENV PORT=8000
 EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --retries=3 \
-    CMD curl -f http://localhost:${PORT:-8000}/api/health || exit 1
+    CMD curl -f http://localhost:8000/api/health || exit 1
 
-# Run with uvicorn
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers 2 --log-level info"]
+# Run uvicorn on the fixed port
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2", "--log-level", "info"]

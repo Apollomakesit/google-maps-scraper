@@ -1,8 +1,5 @@
 [build]
 builder = "DOCKERFILE"
-# Do NOT set dockerfilePath here — Railway auto-detects backend/Dockerfile
-# from the root directory setting. Setting it explicitly can cause Railway
-# to resolve it relative to the repo root (picking up the Go Dockerfile).
 
 [deploy]
 healthcheckPath = "/api/health"
