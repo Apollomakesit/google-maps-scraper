@@ -4,7 +4,13 @@ const nextConfig: NextConfig = {
   output: "standalone",
   // Allow API calls to the backend in development and production
   async rewrites() {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    let apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    
+    // Ensure the URL has a protocol
+    if (!apiUrl.startsWith('http://') && !apiUrl.startsWith('https://')) {
+      apiUrl = `https://${apiUrl}`;
+    }
+    
     return [
       {
         source: "/api/:path*",
