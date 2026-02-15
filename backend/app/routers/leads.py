@@ -35,8 +35,8 @@ async def list_leads(
     tier: Optional[int] = Query(default=None, ge=1, le=3),
     status: Optional[str] = None,
     search: Optional[str] = None,
-    sort_by: str = Query(default="review_count", regex="^(review_count|review_rating|created_at|name|tier)$"),
-    sort_order: str = Query(default="desc", regex="^(asc|desc)$"),
+    sort_by: str = Query(default="review_count", pattern="^(review_count|review_rating|created_at|name|tier)$"),
+    sort_order: str = Query(default="desc", pattern="^(asc|desc)$"),
     city: Optional[str] = None,
 ):
     """List leads with filtering, pagination, and sorting."""
