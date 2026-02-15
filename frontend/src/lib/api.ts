@@ -1,4 +1,14 @@
-/** API client for communicating with the FastAPI backend. */
+/**
+ * API client for communicating with the FastAPI backend.
+ *
+ * All requests use relative URLs (e.g. "/api/leads/scrape").
+ * The Next.js catch-all route handler at /api/[...path]/route.ts
+ * proxies these to the FastAPI backend using the server-side
+ * BACKEND_URL environment variable. This approach:
+ * - Avoids CORS issues (same-origin requests from the browser)
+ * - Uses runtime env vars (no build-time configuration needed)
+ * - Works on Railway with internal networking
+ */
 
 import type {
   LeadListResponse,
@@ -11,13 +21,12 @@ import type {
   NicheOption,
 } from "./types";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-
 async function fetchJSON<T>(
   path: string,
   options: RequestInit = {}
 ): Promise<T> {
-  const url = `${API_BASE}${path}`;
+  // Always use relative URLs — the Next.js API proxy handles forwarding
+  const url = path;
   const response = await fetch(url, {
     headers: {
       "Content-Type": "application/json",

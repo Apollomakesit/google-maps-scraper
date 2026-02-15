@@ -124,24 +124,24 @@ Copy this URL - you'll need it for the frontend.
 
 | Variable | Value | Description |
 |----------|-------|-------------|
-| `NEXT_PUBLIC_API_URL` | `https://leadgen-backend-xxxx.up.railway.app` | Backend URL from Step 2.3 |
+| `BACKEND_URL` | `http://google-maps-scraper.railway.internal:8000` | Backend internal URL (Railway private network) |
 | `PORT` | `3000` | Injected automatically |
 
-3. Add **Build Arguments**:
+> **Note:** `BACKEND_URL` is a **runtime** server-side variable (not build-time).
+> The frontend uses a server-side API proxy that reads this at runtime.
+> No build arguments are needed. Use the Railway **internal URL** for best performance.
 
-| Arg | Value |
-|-----|-------|
-| `NEXT_PUBLIC_API_URL` | Same backend URL |
-
-4. Click **Deploy**
+3. Click **Deploy**
 
 ---
 
 ## Step 4: Post-Deployment Configuration
 
-### 4.1 Update CORS
+### 4.1 CORS (Optional)
 
-Go back to the Backend service and update the `CORS_ORIGINS` variable:
+Since the frontend uses a server-side API proxy (all browser requests stay same-origin),
+CORS is generally not needed. However, if you want direct API access from other domains,
+update `CORS_ORIGINS` in the backend:
 ```
 https://your-frontend-xxxx.up.railway.app
 ```
@@ -205,8 +205,12 @@ Visit: `https://your-frontend.up.railway.app`
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `NEXT_PUBLIC_API_URL` | ✅ | `http://localhost:8000` | Backend API URL |
+| `BACKEND_URL` | ✅ | `http://localhost:8000` | Backend API URL (runtime, server-side) |
 | `PORT` | ❌ | `3000` | Server port |
+
+> **Architecture:** The frontend uses a server-side API proxy (`/api/[...path]/route.ts`).
+> All browser API calls go to the Next.js server, which forwards them to the backend.
+> This eliminates CORS issues and allows using Railway internal networking.
 
 ---
 
@@ -238,7 +242,7 @@ uvicorn app.main:app --reload --port 8000
 ```bash
 cd frontend
 npm install
-echo "NEXT_PUBLIC_API_URL=http://localhost:8000" > .env.local
+echo "BACKEND_URL=http://localhost:8000" > .env.local
 npm run dev
 ```
 

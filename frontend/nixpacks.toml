@@ -8,7 +8,9 @@ cmds = ['npm ci']
 cmds = ['npm run build']
 
 [start]
-cmd = 'npm start'
+cmd = 'node .next/standalone/server.js'
 
 [variables]
 NODE_ENV = 'production'
+PORT = '3000'
+HOSTNAME = '0.0.0.0'

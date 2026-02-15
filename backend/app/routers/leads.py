@@ -27,6 +27,14 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/leads", tags=["leads"])
 
 
+# ============================================================================
+# IMPORTANT: Route ordering matters in FastAPI.
+# Specific named routes (e.g. /stats, /scrape, /niches/list)
+# MUST be defined BEFORE the catch-all /{lead_id} routes.
+# Otherwise FastAPI treats "stats", "scrape", etc. as a lead_id.
+# ============================================================================
+
+
 @router.get("", response_model=LeadListResponse)
 async def list_leads(
     page: int = Query(default=1, ge=1),
@@ -111,6 +119,9 @@ async def list_leads(
         raise HTTPException(status_code=500, detail=f"Eroare la încărcarea lead-urilor: {str(e)}")
 
 
+# ── Named routes FIRST (before /{lead_id}) ──────────────────────────────────
+
+
 @router.get("/stats", response_model=StatsResponse)
 async def get_stats():
     """Get dashboard statistics."""
@@ -173,6 +184,100 @@ async def get_stats():
     except Exception as e:
         logger.error(f"Error getting stats: {e}")
         raise HTTPException(status_code=500, detail=f"Eroare statistici: {str(e)}")
+
+
+@router.post("/scrape", response_model=ScrapeJobResponse)
+async def start_scrape(request: ScrapeRequest, background_tasks: BackgroundTasks):
+    """Start a new scraping job (Phase 1 pipeline)."""
+    db = get_supabase()
+
+    try:
+        # Build search query
+        queries = NICHE_SEARCH_QUERIES.get(request.niche.value, [request.niche.value])
+        query_text = f"{queries[0]} in {request.location}" if queries else f"{request.niche.value} in {request.location}"
+
+        # Create job record
+        job_id = str(uuid.uuid4())
+        job_data = {
+            "id": job_id,
+            "location": request.location,
+            "niche": request.niche.value,
+            "query": query_text,
+            "status": "queued",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        db.table("scrape_jobs").insert(job_data).execute()
+
+        # Run scraping in background
+        background_tasks.add_task(
+            process_scrape_job,
+            job_id=job_id,
+            location=request.location,
+            niche=request.niche,
+            max_results=request.max_results,
+        )
+
+        return ScrapeJobResponse(
+            id=job_id,
+            location=request.location,
+            niche=request.niche.value,
+            query=query_text,
+            status="queued",
+            created_at=job_data["created_at"],
+        )
+
+    except Exception as e:
+        logger.error(f"Error starting scrape: {e}")
+        raise HTTPException(status_code=500, detail=f"Eroare la pornirea scraping-ului: {str(e)}")
+
+
+@router.get("/niches/list")
+async def list_niches():
+    """List all available niches with Romanian labels."""
+    return {
+        "niches": [
+            {"value": niche.value, "label": NICHE_LABELS_RO.get(niche.value, niche.value)}
+            for niche in NicheType
+        ]
+    }
+
+
+@router.get("/jobs/{job_id}", response_model=ScrapeJobResponse)
+async def get_scrape_job(job_id: str):
+    """Get the status of a scraping job."""
+    db = get_supabase()
+
+    try:
+        result = db.table("scrape_jobs").select("*").eq("id", job_id).single().execute()
+        row = result.data
+
+        if not row:
+            raise HTTPException(status_code=404, detail="Job-ul nu a fost găsit")
+
+        return ScrapeJobResponse(
+            id=row["id"],
+            location=row.get("location", ""),
+            niche=row.get("niche", ""),
+            query=row.get("query", ""),
+            status=row.get("status", ""),
+            total_results=row.get("total_results", 0),
+            filtered_leads=row.get("filtered_leads", 0),
+            error_message=row.get("error_message"),
+            started_at=row.get("started_at"),
+            completed_at=row.get("completed_at"),
+            created_at=row.get("created_at"),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting job {job_id}: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── Catch-all /{lead_id} routes LAST ────────────────────────────────────────
+# These MUST be after all named routes to avoid path conflicts.
 
 
 @router.get("/{lead_id}", response_model=LeadResponse)
@@ -260,93 +365,3 @@ async def delete_lead(lead_id: str):
     except Exception as e:
         logger.error(f"Error deleting lead {lead_id}: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.post("/scrape", response_model=ScrapeJobResponse)
-async def start_scrape(request: ScrapeRequest, background_tasks: BackgroundTasks):
-    """Start a new scraping job (Phase 1 pipeline)."""
-    db = get_supabase()
-
-    try:
-        # Build search query
-        queries = NICHE_SEARCH_QUERIES.get(request.niche.value, [request.niche.value])
-        query_text = f"{queries[0]} in {request.location}" if queries else f"{request.niche.value} in {request.location}"
-
-        # Create job record
-        job_id = str(uuid.uuid4())
-        job_data = {
-            "id": job_id,
-            "location": request.location,
-            "niche": request.niche.value,
-            "query": query_text,
-            "status": "queued",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        }
-
-        db.table("scrape_jobs").insert(job_data).execute()
-
-        # Run scraping in background
-        background_tasks.add_task(
-            process_scrape_job,
-            job_id=job_id,
-            location=request.location,
-            niche=request.niche,
-            max_results=request.max_results,
-        )
-
-        return ScrapeJobResponse(
-            id=job_id,
-            location=request.location,
-            niche=request.niche.value,
-            query=query_text,
-            status="queued",
-            created_at=job_data["created_at"],
-        )
-
-    except Exception as e:
-        logger.error(f"Error starting scrape: {e}")
-        raise HTTPException(status_code=500, detail=f"Eroare la pornirea scraping-ului: {str(e)}")
-
-
-@router.get("/jobs/{job_id}", response_model=ScrapeJobResponse)
-async def get_scrape_job(job_id: str):
-    """Get the status of a scraping job."""
-    db = get_supabase()
-
-    try:
-        result = db.table("scrape_jobs").select("*").eq("id", job_id).single().execute()
-        row = result.data
-
-        if not row:
-            raise HTTPException(status_code=404, detail="Job-ul nu a fost găsit")
-
-        return ScrapeJobResponse(
-            id=row["id"],
-            location=row.get("location", ""),
-            niche=row.get("niche", ""),
-            query=row.get("query", ""),
-            status=row.get("status", ""),
-            total_results=row.get("total_results", 0),
-            filtered_leads=row.get("filtered_leads", 0),
-            error_message=row.get("error_message"),
-            started_at=row.get("started_at"),
-            completed_at=row.get("completed_at"),
-            created_at=row.get("created_at"),
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting job {job_id}: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@router.get("/niches/list")
-async def list_niches():
-    """List all available niches with Romanian labels."""
-    return {
-        "niches": [
-            {"value": niche.value, "label": NICHE_LABELS_RO.get(niche.value, niche.value)}
-            for niche in NicheType
-        ]
-    }
