@@ -60,9 +60,10 @@ This project runs as **two Railway services** connected to a **Supabase** Postgr
 
 ### 2.2 Configure Backend Service
 
-1. In the service settings, set:
-   - **Root Directory**: `backend`
-   - **Builder**: Dockerfile (Railway will auto-detect `backend/Dockerfile`)
+1. **IMPORTANT**: In the service settings, set:
+   - **Root Directory**: `backend` ⚠️ **Must be set correctly**
+   - **Builder**: Dockerfile (auto-detected)
+   - **Dockerfile Path**: Leave empty (uses `backend/Dockerfile`)
 
 2. Add **Environment Variables**:
 
@@ -97,9 +98,12 @@ Copy this URL - you'll need it for the frontend.
 
 ### 3.2 Configure Frontend Service
 
-1. Set:
-   - **Root Directory**: `frontend`
-   - **Builder**: Dockerfile
+1. **IMPORTANT**: In the service settings, set:
+   - **Root Directory**: `frontend` ⚠️ **Must be set correctly**
+   - **Builder**: Dockerfile (auto-detected)
+   - **Dockerfile Path**: Leave empty (uses `frontend/Dockerfile`)
+
+   > ⚠️ **Critical**: If Root Directory is not set to `frontend`, Railway will use the wrong Dockerfile from the project root and fail with Go dependency errors.
 
 2. Add **Environment Variables**:
 
@@ -224,8 +228,17 @@ npm run dev
 ```
 
 ---
+Frontend Build Fails with "go.sum not found" or Go/Playwright Errors
 
-## Troubleshooting
+**Problem**: Railway is using the wrong Dockerfile (root `Dockerfile` instead of `frontend/Dockerfile`)
+
+**Solution**:
+1. Go to Railway → Your Frontend Service → **Settings** → **Source**
+2. Verify **Root Directory** is set to: `frontend`
+3. **Delete the service** and recreate it if the setting won't save
+4. Redeploy
+
+**Why this happens**: The project has multiple Dockerfiles. The root `Dockerfile` is for the Go scraper, not the frontend.
 
 ### "Database disconnected"
 - Check `SUPABASE_URL` and `SUPABASE_KEY` environment variables
@@ -235,6 +248,10 @@ npm run dev
 - Update `CORS_ORIGINS` in the backend with the frontend URL
 - For development, set `CORS_ORIGINS=*`
 
+### Build Fails (Other)
+- Ensure `Root Directory` is set correctly in Railway
+- Check Railway build logs for specific errors
+- Verify the correct `railway.toml` exists in the service directory
 ### Build Fails
 - Ensure `Root Directory` is set correctly in Railway
 - Check Railway build logs for specific errors
