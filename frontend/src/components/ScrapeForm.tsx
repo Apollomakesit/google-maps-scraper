@@ -179,22 +179,34 @@ export default function ScrapeForm({ onJobComplete }: ScrapeFormProps) {
               </span>
             </div>
 
-            {currentJob.status === "completed" && (
-              <div className="flex items-center gap-4 text-sm">
-                <div className="flex items-center gap-1.5">
-                  <CheckCircle2 size={14} className="text-[var(--success)]" />
-                  <span className="text-[var(--muted)]">
-                    {currentJob.total_results} rezultate scraping
-                  </span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <CheckCircle2 size={14} className="text-[var(--accent)]" />
-                  <span className="text-[var(--muted)]">
-                    {currentJob.filtered_leads} lead-uri filtrate
-                  </span>
-                </div>
+            <div className="flex items-center gap-4 text-sm">
+              <div className="flex items-center gap-1.5">
+                <CheckCircle2
+                  size={14}
+                  className={
+                    currentJob.status === "completed"
+                      ? "text-[var(--success)]"
+                      : "text-[var(--warning)]"
+                  }
+                />
+                <span className="text-[var(--muted)]">
+                  {currentJob.total_results} rezultate scanate
+                </span>
               </div>
-            )}
+              <div className="flex items-center gap-1.5">
+                <CheckCircle2
+                  size={14}
+                  className={
+                    currentJob.status === "completed"
+                      ? "text-[var(--accent)]"
+                      : "text-[var(--warning)]"
+                  }
+                />
+                <span className="text-[var(--muted)]">
+                  {currentJob.filtered_leads} lead-uri fără website
+                </span>
+              </div>
+            </div>
 
             {(currentJob.status === "running" || currentJob.status === "queued") && (
               <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">

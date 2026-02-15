@@ -489,6 +489,15 @@ async def process_scrape_job(
     total_scraped = 0
     total_leads = 0
 
+    def _update_job_progress(total: int, filtered: int) -> None:
+        try:
+            db.table("scrape_jobs").update({
+                "total_results": total,
+                "filtered_leads": filtered,
+            }).eq("id", job_id).execute()
+        except Exception as progress_error:
+            logger.warning(f"Job {job_id}: progress update failed: {progress_error}")
+
     try:
         # Update job status to running
         db.table("scrape_jobs").update({
@@ -509,6 +518,8 @@ async def process_scrape_job(
                 if pid not in seen_place_ids:
                     seen_place_ids.add(pid)
                     all_entries.append(entry)
+
+            _update_job_progress(total=len(all_entries), filtered=0)
 
             # Anti-bot delay between queries
             await asyncio.sleep(random.uniform(
@@ -591,7 +602,11 @@ async def process_scrape_job(
 
             leads_to_insert.append(lead)
 
+            if len(leads_to_insert) % 5 == 0:
+                _update_job_progress(total=total_scraped, filtered=len(leads_to_insert))
+
         total_leads = len(leads_to_insert)
+        _update_job_progress(total=total_scraped, filtered=total_leads)
         logger.info(f"Job {job_id}: Filtered to {total_leads} leads (no website)")
 
         # Batch insert leads into Supabase
