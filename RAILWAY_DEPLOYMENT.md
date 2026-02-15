@@ -98,12 +98,27 @@ Copy this URL - you'll need it for the frontend.
 
 ### 3.2 Configure Frontend Service
 
-1. **IMPORTANT**: In the service settings, set:
-   - **Root Directory**: `frontend` ⚠️ **Must be set correctly**
-   - **Builder**: Dockerfile (auto-detected)
-   - **Dockerfile Path**: Leave empty (uses `frontend/Dockerfile`)
-
-   > ⚠️ **Critical**: If Root Directory is not set to `frontend`, Railway will use the wrong Dockerfile from the project root and fail with Go dependency errors.
+1. **IMPORTANT**: In the service settings, configure the build:
+   
+   **Settings → Build:**
+   - **Root Directory**: `frontend` ⚠️ **Critical**
+   - **Dockerfile Path**: Leave **EMPTY** or set to `Dockerfile`
+   
+   > ⚠️ **Common Mistake**: Do NOT set Dockerfile Path to `frontend/Dockerfile`!  
+   > Since Root Directory is already `frontend`, the path is relative to that.
+   >
+   > ```
+   > ✅ CORRECT:
+   >    Root Directory: frontend
+   >    Dockerfile Path: Dockerfile (or empty)
+   >    → Railway uses: frontend/Dockerfile
+   >
+   > ❌ WRONG:
+   >    Root Directory: frontend  
+   >    Dockerfile Path: frontend/Dockerfile
+   >    → Railway looks for: frontend/frontend/Dockerfile (doesn't exist)
+   >    → Falls back to: Dockerfile (root - Go scraper!)
+   > ```
 
 2. Add **Environment Variables**:
 
@@ -228,17 +243,69 @@ npm run dev
 ```
 
 ---
-Frontend Build Fails with "go.sum not found" or Go/Playwright Errors
+
+## Troubleshooting
+
+### 🎯 Quick Reference: Railway Service Configuration
+
+| Service | Root Directory | Dockerfile Path | First Line of Logs |
+|---------|---------------|-----------------|-------------------|
+| **Backend** | `backend` | (empty) or `Dockerfile` | `FROM python:3.11-slim` |
+| **Frontend** | `frontend` | (empty) or `Dockerfile` | `FROM node:22-alpine AS deps` |
+
+---
+
+### Frontend Build Fails with "go.sum not found" or Go/Playwright Errors
 
 **Problem**: Railway is using the wrong Dockerfile (root `Dockerfile` instead of `frontend/Dockerfile`)
 
-**Solution**:
-1. Go to Railway → Your Frontend Service → **Settings** → **Source**
-2. Verify **Root Directory** is set to: `frontend`
-3. **Delete the service** and recreate it if the setting won't save
-4. Redeploy
+**Root Cause**: One of these common misconfigurations:
+1. Root Directory not set to `frontend`
+2. Dockerfile Path set to `frontend/Dockerfile` (should be just `Dockerfile` or empty)
+3. Railway cached an old configuration
 
-**Why this happens**: The project has multiple Dockerfiles. The root `Dockerfile` is for the Go scraper, not the frontend.
+**Solution**:
+
+**Step 1**: Verify configuration in Railway Dashboard:
+```
+Settings → Build:
+  Root Directory: frontend
+  Dockerfile Path: (empty) or Dockerfile
+```
+
+**Step 2**: If you see `frontend/Dockerfile` in Dockerfile Path:
+1. **Change it to**: `Dockerfile` (no path prefix)
+2. Or **clear it completely**
+3. Click **Save**
+
+**Step 3**: If it still fails:
+1. Go to **Deployments** tab
+2. Find the latest deployment
+3. Click **View Logs**
+4. Look for "Using Dockerfile: ..." at the start
+5. If it shows the root Dockerfile, the config isn't saved
+
+**Step 4**: Nuclear option (if settings won't save):
+1. **Delete the service** completely
+2. Create new service:
+   - Deploy from GitHub
+   - Select repository
+   - **Immediately** in Settings → Build:
+     - Set Root Directory: `frontend`  
+     - Leave Dockerfile Path empty
+   - Add environment variables
+   - Deploy
+
+**How to verify it's working**: 
+The build logs should start with:
+```
+FROM node:22-alpine AS deps
+```
+
+NOT with:
+```
+FROM ubuntu:20.04 AS playwright-deps
+```
 
 ### "Database disconnected"
 - Check `SUPABASE_URL` and `SUPABASE_KEY` environment variables
@@ -248,13 +315,10 @@ Frontend Build Fails with "go.sum not found" or Go/Playwright Errors
 - Update `CORS_ORIGINS` in the backend with the frontend URL
 - For development, set `CORS_ORIGINS=*`
 
-### Build Fails (Other)
+### Other Build Failures
 - Ensure `Root Directory` is set correctly in Railway
 - Check Railway build logs for specific errors
 - Verify the correct `railway.toml` exists in the service directory
-### Build Fails
-- Ensure `Root Directory` is set correctly in Railway
-- Check Railway build logs for specific errors
 
 ### Scraping Returns Empty
 - The scraper uses the Go binary or Google Places API
